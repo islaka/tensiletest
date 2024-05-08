@@ -1,1 +1,1 @@
-# Tensile Testor
+# Tensile Tester
