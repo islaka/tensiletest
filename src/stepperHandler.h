@@ -17,8 +17,8 @@ public:
         unsigned int count = 0;
         // step the motor with non-blocking delay
         while (count < stride) {
-            if (millis() - last_time > speed) {
-                last_time = millis();
+            if (micros() - last_time > speed * 1000) {
+                last_time = micros();
                 digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
                 count++;
             }

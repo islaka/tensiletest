@@ -22,13 +22,15 @@ bool render = false;
 long prev = 0;
 long val = 0;
 
+float max_weight = 0;
+
 void IRAM_ATTR readEncoderISR() {
   rotaryEncoder.readEncoder_ISR();
 }
 
 void homing() {
   // run till the switch is pressed
-  stepper.setDirection(0);
+  stepper.setDirection(1);
   while (digitalRead(END_STOP_PIN) == HIGH) {
     stepper.step(1);
   }
@@ -38,15 +40,15 @@ void homing() {
 
 void run_test() {
   // scale.data() will increase and go over 1, after that when it drop below 1, the stepper will stop
-  stepper.setDirection(1);
+  stepper.setDirection(0);
   bool armed = false;
   unsigned int count = 0;
   float weight = scale.data(0);
   // step until the loadcell is over 1
   while (true) {
     Serial.println(weight);
-    stepper.step(10);
-    if (weight > 1) {
+    stepper.step(1, 80);
+    if (weight > 0.5) {
       count++;
     } else {
       count = 0;
@@ -57,12 +59,15 @@ void run_test() {
       break;
     }
     weight = scale.data(0);
+    if (weight > max_weight) {
+      max_weight = weight;
+    }
   }
   // now the loadcell is over 1, step until the loadcell is below 1
   while (armed) {
     Serial.println(weight);
-    stepper.step(10);
-    if (weight < 1) {
+    stepper.step(1, 80);
+    if (weight < 0.5) {
       count++;
     } else {
       count = 0;
@@ -73,14 +78,27 @@ void run_test() {
       break; // disarm
     }
     weight = scale.data(0);
+    if (weight > max_weight) {
+      max_weight = weight;
+    }
+
+    // render the scale data on the bottom
+    char buffer[10];
+    dtostrf(scale.data(0), 1, 2, buffer);
+    oled.write(buffer, 0, 7, 0, 0, 1);
   }
 }
 
 void menuSetup() { // print initial menu
+  oled.clear();
   oled.write((char *)"Tension Tester", 0, 0, 1, 0, 1);
   for (int i = 0; i < numOptions; i++) {
     oled.write((char *)options0[i], 0, (i+1), 0, 0, 1);
   }
+  // max weight on line 4
+  char buffer[10];
+  dtostrf(max_weight, 1, 2, buffer);
+  oled.write(buffer, 0, 4, 0, 0, 1);
   oled.write((char *)"Sensor - Group 9",0, 6, 0, 0, 1);
   oled.write((char *)"0.w.0",0, 7, 0, 0, 1);
 }
@@ -126,14 +144,20 @@ void screen() {
         stage = currentSelection + 1;
         render = true;
       }
+      // render the scale data on the bottom
+      char buffer[10];
+      dtostrf(scale.data(0), 1, 2, buffer);
+      oled.write(buffer, 0, 5, 0, 0, 1);
       break;
     }
     case 1: { // homing
       // handleMenuSelectionLogic();
       if (render) { // print Homing... \n Press to cancel
+        // reset max_weight
+        max_weight = 0;
         oled.clear();
         oled.write((char *)"Homing...", 0, 0, 1, 0, 1);
-        oled.write((char *)"Press red button to cancel", 0, 1, 0, 0, 1);
+        oled.write((char *)"Press button to cancel", 0, 1, 0, 0, 1);
         render = false;
         homing();
         // after successfully homing, go back to menu
@@ -151,7 +175,7 @@ void screen() {
       if (render) { // print Testing... \n Press to cancel
         oled.clear();
         oled.write((char *)"Testing...", 0, 0, 1, 0, 1);
-        oled.write((char *)"Press red button to cancel", 0, 1, 0, 0, 1);
+        oled.write((char *)"Press button to cancel", 0, 1, 0, 0, 1);
         render = false;
         run_test();
         // after successfully testing, go back to menu
