@@ -24,7 +24,7 @@ static uint8_t *ucBackBuffer = NULL;
 // let ss_oled figure out the display address
 #define OLED_ADDR -1
 // don't rotate the display
-#define FLIP180 0
+#define FLIP180 1
 // don't invert the display
 #define INVERT 0
 // Bit-Bang the I2C bus

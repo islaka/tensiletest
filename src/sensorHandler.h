@@ -2,8 +2,7 @@
 #include "configurations.h"
 #include <HX711.h>
 
-#define CALIB 2280.f
-#define CALIB_WEIGHT 21069.f
+#define CALIB 21069.f
 HX711 loadcell;
 
 class Scale {
@@ -27,7 +26,12 @@ class Scale {
             loadcell.power_up();
         }
 
-        long data(int avg = 10) {
+        float data(int avg = 10) {
+            // Serial.print("Reading...");
+            if (avg == 0) {
+                return loadcell.get_units();
+            }
             return loadcell.get_units(avg);
         }
 };
+Scale scale;
