@@ -3,7 +3,7 @@
 #include <HX711.h>
 
 #define CALIB 2280.f
-#define CALIB_WEIGHT 428.5f
+#define CALIB_WEIGHT 21069.f
 HX711 loadcell;
 
 class Scale {
