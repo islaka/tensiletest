@@ -1,15 +1,15 @@
 #include <Arduino.h>
-#include <TMCStepper.h> //TMC stepper library
+// #include <TMCStepper.h> //TMC stepper library
 #include "oledHandler.h"
 #include "ota.h"
 #include <AiEsp32RotaryEncoder.h>
 #include "sensorHandler.h"
+#include "stepperHandler.h"
 
-// using namespace TMC2209_n;
 Scale scale;
-// TMC2209Stepper driver(&SERIAL_PORT, R_SENSE, DRIVER_ADDRESS);
 OLED oled;
 AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_BUTTON_PIN, 33, ENCODER_STEP);
+StepperHandler stepper;
 
 #define IS_HOMING false
 #define IS_TESTING false
@@ -20,20 +20,33 @@ const uint8_t numOptions = sizeof(options0) / sizeof(options0[0]);
 uint8_t stage = 0; // 0 = menu, 1 = homing, 2 = testing, 3 = about
 uint8_t currentSelection = 0;
 uint8_t prevSelection = 0;
-
 bool render = false;
+long prev = 0;
+long val = 0;
 
 void IRAM_ATTR readEncoderISR() {
   rotaryEncoder.readEncoder_ISR();
 }
 
 void homing() {
-  // run until stop switch
+  // run till the switch is pressed
+  stepper.setDirection(0);
+  while (digitalRead(STOP_PIN) == HIGH) {
+    stepper.step();
+  }
 }
+
 void testing() {
-  scale.get_units();
+  // scale.data() always >=0. when it increases then suddenly drop, stop the motor
+  stepper.setDirection(1);
+  while (true) {
+    val = scale.data();
+    if (val > prev) {
+      stepper.step();
+    }
+    prev = val;
+  }
 }
-void about() {}
 
 void menuSetup() { // print initial menu
   oled.write((char *)"Tension Tester", 0, 0, 1, 0, 1);
@@ -148,37 +161,12 @@ void setup() {
   bool circleValues = false;
   rotaryEncoder.setBoundaries(0, 2, circleValues);
   rotaryEncoder.setAcceleration(0); 
+  stepper.setup();
 
   pinMode(5, OUTPUT);
   digitalWrite(5, HIGH);
   pinMode(23,OUTPUT);
   digitalWrite(23, LOW);
-  // // // TMC2226 setup
-  // pinMode(STEP_PIN, OUTPUT);
-  // pinMode(DIR_PIN, OUTPUT);
-  // pinMode(EN_PIN, OUTPUT);
-  // digitalWrite(EN_PIN, HIGH); // Disable driver
-  // pinMode(TX_PIN, OUTPUT);
-  // pinMode(RX_PIN, INPUT); 
-  // digitalWrite(STEP_PIN, LOW);
-  // digitalWrite(DIR_PIN, LOW);
-  // digitalWrite(EN_PIN, LOW); // Enable driver
-
-  // driver.begin();
-  // driver.toff(3);
-  // driver.blank_time(24);
-  // driver.rms_current(500); //mA
-  // driver.microsteps(16);
-  // driver.TCOOLTHRS(0xFFFFF); // 20bit max
-  // driver.semin(0);
-  // driver.semax(2);
-  // driver.shaft(false);
-  // driver.sedn(0b01);
-  // driver.SGTHRS(STALL_VALUE);
-
-  // HX711 setup
-  
-  // activate_interrupt();
   menuSetup();
 }
 
@@ -186,23 +174,6 @@ void loop() {
   #ifdef OTA
   ota.handle();
   #endif
-  // static uint32_t last_time = 0;
-  // static uint32_t last_step = 0;
-  // uint32_t current = millis();
-  // non blocking delay
-  // if (current - last_time > delay_scale) {
-  //   last_time = current;
-  //   Serial.println(scale.get_units(10));
-  // }
-  // if (current - last_step > delay_step) {
-  //   last_step = current;
-  //   Serial.print("0 ");
-  //   Serial.print(driver.SG_RESULT(), DEC);
-  //   Serial.print(" ");
-  //   Serial.println(driver.cs2rms(driver.cs_actual()), DEC);
-  // rotary_loop();
-  // delay(1);
   screen();
-  // }
 }
 

@@ -8,6 +8,7 @@
 
 uint8_t steps_per_mm = 100;
 unsigned long current = 0;
+unsigned long last_time = 0;
 
 class StepperHandler {
 public:
@@ -17,15 +18,14 @@ public:
         pinMode(EN_PIN, OUTPUT);
     }
     void step() {
-        // 
+        current = millis();
+        // step the motor with non-blocking delay
+        if (current - last_time > 2) {
+            last_time = current;
+            digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
+        }
     }
     void setDirection(bool direction) {
         digitalWrite(DIR_PIN, direction);
-    }
-    void enable() {
-        digitalWrite(EN_PIN, LOW);
-    }
-    void disable() {
-        digitalWrite(EN_PIN, HIGH);
     }
 };  
