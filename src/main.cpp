@@ -1,15 +1,13 @@
 #include <Arduino.h>
+#include "ota.h"
 // #include <TMCStepper.h> //TMC stepper library
 #include "oledHandler.h"
-#include "ota.h"
 #include <AiEsp32RotaryEncoder.h>
 #include "sensorHandler.h"
 #include "stepperHandler.h"
 
-Scale scale;
 OLED oled;
-AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_BUTTON_PIN, 33, ENCODER_STEP);
-StepperHandler stepper;
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_BUTTON_PIN, 33, 4);
 
 #define IS_HOMING false
 #define IS_TESTING false
@@ -31,20 +29,50 @@ void IRAM_ATTR readEncoderISR() {
 void homing() {
   // run till the switch is pressed
   stepper.setDirection(0);
-  while (digitalRead(STOP_PIN) == HIGH) {
-    stepper.step();
+  while (digitalRead(END_STOP_PIN) == HIGH) {
+    stepper.step(1);
   }
+  stage = 0;
+  render = true;
 }
 
-void testing() {
-  // scale.data() always >=0. when it increases then suddenly drop, stop the motor
+void run_test() {
+  // scale.data() will increase and go over 1, after that when it drop below 1, the stepper will stop
   stepper.setDirection(1);
+  bool armed = false;
+  unsigned int count = 0;
+  float weight = scale.data(0);
+  // step until the loadcell is over 1
   while (true) {
-    val = scale.data();
-    if (val > prev) {
-      stepper.step();
+    Serial.println(weight);
+    stepper.step(10);
+    if (weight > 1) {
+      count++;
+    } else {
+      count = 0;
     }
-    prev = val;
+    if (count > 10) { // make sure the loadcell is over 1 consistently
+      Serial.println("Armed");
+      armed = true;
+      break;
+    }
+    weight = scale.data(0);
+  }
+  // now the loadcell is over 1, step until the loadcell is below 1
+  while (armed) {
+    Serial.println(weight);
+    stepper.step(10);
+    if (weight < 1) {
+      count++;
+    } else {
+      count = 0;
+    }
+    if (count > 10) { // make sure the loadcell is below 1 consistently
+      Serial.println("Disarmed");
+      armed = false;
+      break; // disarm
+    }
+    weight = scale.data(0);
   }
 }
 
@@ -75,14 +103,14 @@ void handleMenuSelectionLogic() {
 }
 
 void screen() {
-  static uint8_t prevStage = stage;
-  if (prevStage != stage) {
-    render = true;
-    oled.clear();
-    prevStage = stage;
-    menuSetup();
-    render = false;
-  }
+  // static uint8_t prevStage = stage;
+  // if (prevStage != stage) {
+  //   render = true;
+  //   oled.clear();
+  //   prevStage = stage;
+  //   menuSetup();
+  //   render = false;
+  // }
   
   switch(stage) {
     case 0: { // menu
@@ -96,6 +124,7 @@ void screen() {
       // if press button, go to the selected menu
       if (rotaryEncoder.isEncoderButtonClicked()) {
         stage = currentSelection + 1;
+        render = true;
       }
       break;
     }
@@ -104,12 +133,16 @@ void screen() {
       if (render) { // print Homing... \n Press to cancel
         oled.clear();
         oled.write((char *)"Homing...", 0, 0, 1, 0, 1);
-        oled.write((char *)"Press to cancel", 0, 1, 0, 0, 1);
+        oled.write((char *)"Press red button to cancel", 0, 1, 0, 0, 1);
         render = false;
-        // homing();
+        homing();
+        // after successfully homing, go back to menu
+        stage = 0;
+        menuSetup();
+        render = true;
       }
       if (rotaryEncoder.isEncoderButtonClicked()) {
-        stage = 0;
+        stage = 0; // todo: NOT WORKING
       }
       break;
     }
@@ -118,14 +151,18 @@ void screen() {
       if (render) { // print Testing... \n Press to cancel
         oled.clear();
         oled.write((char *)"Testing...", 0, 0, 1, 0, 1);
-        oled.write((char *)"Press to cancel", 0, 1, 0, 0, 1);
+        oled.write((char *)"Press red button to cancel", 0, 1, 0, 0, 1);
         render = false;
-        scale.calibrate();
+        run_test();
+        // after successfully testing, go back to menu
+        stage = 0;
+        menuSetup();
+        render = true;
       }
       if (rotaryEncoder.isEncoderButtonClicked()) {
-        stage = 0;
+        stage = 0; // todo: NOT WORKING
       }
-      testing();
+      
       break;
     }
     case 3: { // about
@@ -140,7 +177,9 @@ void screen() {
         // about();
       }
       if (rotaryEncoder.isEncoderButtonClicked()) {
+        menuSetup();
         stage = 0;
+        render = true;
       }
       break;
     }
@@ -151,23 +190,18 @@ void screen() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(921600);
   oled.setup();
   scale.setup();
-  pinMode(33, OUTPUT);
-  digitalWrite(33, HIGH);
-  rotaryEncoder.begin();
-  rotaryEncoder.setup(readEncoderISR);
-  bool circleValues = false;
-  rotaryEncoder.setBoundaries(0, 2, circleValues);
-  rotaryEncoder.setAcceleration(0); 
   stepper.setup();
 
-  pinMode(5, OUTPUT);
-  digitalWrite(5, HIGH);
-  pinMode(23,OUTPUT);
-  digitalWrite(23, LOW);
+  rotaryEncoder.begin();
+  rotaryEncoder.setup(readEncoderISR);
+  rotaryEncoder.setBoundaries(0, 2);
+  rotaryEncoder.setAcceleration(0); 
+
   menuSetup();
+  render = true;
 }
 
 void loop() {
@@ -175,5 +209,6 @@ void loop() {
   ota.handle();
   #endif
   screen();
+  Serial.println(scale.data(0));
 }
 
