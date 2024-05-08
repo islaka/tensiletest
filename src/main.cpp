@@ -13,20 +13,25 @@ AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ENCODER_A_PIN, ENCODER
 
 #define IS_HOMING false
 #define IS_TESTING false
-// #define IS_CALIBRATING false
 
 const char* options0[] = {"Homing", "Start Test", "About"};
+const uint8_t numOptions = sizeof(options0) / sizeof(options0[0]);
 
 uint8_t stage = 0; // 0 = menu, 1 = homing, 2 = testing, 3 = about
 uint8_t currentSelection = 0;
 uint8_t prevSelection = 0;
-uint8_t numOptions = sizeof(options0) / sizeof(options0[0]);
 
 bool render = false;
 
-void homing() {}
+void IRAM_ATTR readEncoderISR() {
+  rotaryEncoder.readEncoder_ISR();
+}
+
+void homing() {
+  // run until stop switch
+}
 void testing() {
-  scale.read_data();
+  scale.get_units();
 }
 void about() {}
 
@@ -39,23 +44,15 @@ void menuSetup() { // print initial menu
   oled.write((char *)"0.w.0",0, 7, 0, 0, 1);
 }
 
-void IRAM_ATTR readEncoderISR() {
-  rotaryEncoder.readEncoder_ISR();
-}
-
 void handleMenuSelectionLogic() {
   // decrease currentSelection when count increase and increase when count reduce, roll over when count > sizeof(option) and vice versa
   uint8_t count = rotaryEncoder.readEncoder();
-  if (currentSelection < count) {
+  if (currentSelection != count) {
     prevSelection = currentSelection;
-    currentSelection++;
-    render = true;
-  } else if (currentSelection > count) {
-    prevSelection = currentSelection;
-    currentSelection--;
+    currentSelection = count;
     render = true;
   }
-  if (count > numOptions - 1) {
+  if (count >= numOptions) {
     count = 0;
     rotaryEncoder.reset();
   } else if (count < 0) {
@@ -65,8 +62,17 @@ void handleMenuSelectionLogic() {
 }
 
 void screen() {
+  static uint8_t prevStage = stage;
+  if (prevStage != stage) {
+    render = true;
+    oled.clear();
+    prevStage = stage;
+    menuSetup();
+    render = false;
+  }
+  
   switch(stage) {
-    case 0: {
+    case 0: { // menu
       handleMenuSelectionLogic();
       if (render) { // new content
         // update the menu by invert the new selection and the old selection
@@ -77,12 +83,10 @@ void screen() {
       // if press button, go to the selected menu
       if (rotaryEncoder.isEncoderButtonClicked()) {
         stage = currentSelection + 1;
-        // oled.clear();
-        render = true;
       }
       break;
     }
-    case 1: {
+    case 1: { // homing
       // handleMenuSelectionLogic();
       if (render) { // print Homing... \n Press to cancel
         oled.clear();
@@ -93,13 +97,10 @@ void screen() {
       }
       if (rotaryEncoder.isEncoderButtonClicked()) {
         stage = 0;
-        oled.clear();
-        render = true;
-        menuSetup();
       }
       break;
     }
-    case 2: {
+    case 2: { // testing
       // handleMenuSelectionLogic();
       if (render) { // print Testing... \n Press to cancel
         oled.clear();
@@ -110,14 +111,11 @@ void screen() {
       }
       if (rotaryEncoder.isEncoderButtonClicked()) {
         stage = 0;
-        oled.clear();
-        render = true;
-        menuSetup();
       }
       testing();
       break;
     }
-    case 3: {
+    case 3: { // about
       // handleMenuSelectionLogic();
       if (render) { // print About... \n Press to cancel
         oled.clear();
@@ -130,9 +128,6 @@ void screen() {
       }
       if (rotaryEncoder.isEncoderButtonClicked()) {
         stage = 0;
-        oled.clear();
-        render = true;
-        menuSetup();
       }
       break;
     }
@@ -144,9 +139,6 @@ void screen() {
 
 void setup() {
   Serial.begin(115200);
-  // while(!Serial); 
-  // Serial.println("\nStart...");
-  // SERIAL_PORT.begin(115200, SERIAL_8N1, RX_PIN, TX_PIN);
   oled.setup();
   scale.setup();
   pinMode(33, OUTPUT);
@@ -209,7 +201,7 @@ void loop() {
   //   Serial.print(" ");
   //   Serial.println(driver.cs2rms(driver.cs_actual()), DEC);
   // rotary_loop();
-	// delay(1);
+  // delay(1);
   screen();
   // }
 }
